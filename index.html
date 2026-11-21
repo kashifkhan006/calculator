@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Calculator with scientific mode, history, themes and keyboard support. Built for CodeAlpha.">
+<title>Calculator | CodeAlpha</title>
+<style>
+:root{--bg:#10151c;--panel:#1a222d;--key:#243040;--keyh:#2d3b4f;--ink:#e9eef5;--mute:#8896a8;--acc:#f2a33a;--acct:#1a1204;--clr:#e5604b;--shadow:#0008}
+[data-theme=light]{--bg:#e9e4d8;--panel:#f7f4ec;--key:#fff;--keyh:#f0ece1;--ink:#1b2430;--mute:#6b7683;--acc:#2f6f6b;--acct:#fff;--clr:#c9553d;--shadow:#0003}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font-family:"Trebuchet MS",system-ui,sans-serif;transition:background .3s}
+.wrap{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;justify-content:center;padding:16px}
+.calc,.hist{background:var(--panel);border-radius:24px;padding:18px;box-shadow:0 20px 50px var(--shadow)}
+.calc{width:min(350px,94vw)}
+.bar{display:flex;justify-content:space-between;margin-bottom:10px}
+.bar button{width:auto;padding:6px 12px;font-size:13px;border-radius:20px;background:var(--key);box-shadow:none;color:var(--mute)}
+.bar button.on{color:var(--acc)}
+.screen{padding:8px 6px 14px;text-align:right;min-height:104px;display:flex;flex-direction:column;justify-content:flex-end;cursor:copy}
+#hist1{font-size:15px;color:var(--mute);min-height:20px;overflow:hidden}
+#disp{font-size:44px;font-weight:300;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.keys{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.sci{display:none;grid-column:1/-1;grid-template-columns:repeat(4,1fr);gap:9px}
+.sciOn .sci{display:grid}
+button{font:inherit;font-size:20px;padding:15px 0;border:0;border-radius:14px;background:var(--key);color:var(--ink);cursor:pointer;transition:transform .08s,background .15s;box-shadow:0 3px 0 #0003}
+button:hover{background:var(--keyh)}button:active,button.press{transform:translateY(3px);box-shadow:none}
+button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.sci button{font-size:16px;padding:11px 0;color:var(--mute)}
+.op{background:var(--acc);color:var(--acct)}.op:hover{background:var(--acc);filter:brightness(1.1)}
+.clr{background:var(--clr);color:#fff}.wide{grid-column:span 2}
+.hist{width:min(250px,94vw);max-height:480px;overflow:auto}
+.hist h2{margin:0 0 10px;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+.hist h2 button{font-size:12px;padding:4px 10px;border-radius:14px;width:auto;color:var(--mute)}
+.hist li{list-style:none;padding:8px 6px;border-bottom:1px solid #8883;cursor:pointer;text-align:right;font-size:14px;color:var(--mute)}
+.hist li b{display:block;font-size:19px;color:var(--ink);font-weight:400}.hist li:hover b{color:var(--acc)}
+.hist ul{padding:0;margin:0}.empty{color:var(--mute);font-size:14px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:var(--acct);padding:8px 18px;border-radius:20px;opacity:0;transition:opacity .25s;pointer-events:none}
+#toast.show{opacity:1}
+</style></head><body>
+<div class="wrap">
+<main class="calc" id="calc" aria-label="Calculator">
+<div class="bar"><button id="sciBtn">Scientific</button><button id="themeBtn">Light mode</button></div>
+<div class="screen" id="screen" title="Click to copy result"><div id="hist1"></div><div id="disp" aria-live="polite">0</div></div>
+<div class="keys">
+<div class="sci">
+<button data-f="sqrt">√</button><button data-f="sq">x²</button><button data-f="inv">1/x</button><button data-f="pi">π</button>
+</div>
+<button class="clr" data-a="clear">AC</button><button data-a="back">⌫</button><button data-a="percent">%</button><button class="op" data-op="÷">÷</button>
+<button data-n="7">7</button><button data-n="8">8</button><button data-n="9">9</button><button class="op" data-op="×">×</button>
+<button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button><button class="op" data-op="−">−</button>
+<button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button><button class="op" data-op="+">+</button>
+<button data-a="neg">±</button><button data-n="0">0</button><button data-n=".">.</button><button class="op" data-a="eq">=</button>
+</div></main>
+<aside class="hist"><h2>History <button id="clrH">Clear</button></h2><ul id="hl"><li class="empty">No calculations yet</li></ul></aside>
+</div>
+<div id="toast" role="status"></div>
+<script>
+const $=id=>document.getElementById(id);
+let cur="0",prev=null,op=null,fresh=false,history=[];
+try{history=JSON.parse(localStorage.getItem("ca-calc-hist")||"[]")}catch(e){}
+const calc=(a,b,o)=>{a=+a;b=+b;return o==="+"?a+b:o==="−"?a-b:o==="×"?a*b:o==="÷"?(b===0?"Error":a/b):b};
+const fmt=v=>v==="Error"||!isFinite(v)?"Error":String(+(+v).toPrecision(12));
+const err=()=>cur==="Error";
+function show(){const d=$("disp");d.textContent=cur;d.style.fontSize=cur.length>11?"28px":cur.length>8?"36px":"44px";$("hist1").textContent=op?prev+" "+op:""}
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1200)}
+function renderH(){const l=$("hl");l.innerHTML=history.length?history.map((h,i)=>`<li data-i="${i}">${h.e}<b>${h.r}</b></li>`).join(""):'<li class="empty">No calculations yet</li>';
+ try{localStorage.setItem("ca-calc-hist",JSON.stringify(history))}catch(e){}}
+function addH(e,r){history.unshift({e,r});history=history.slice(0,30);renderH()}
+function num(n){if(err()||fresh){cur="0";fresh=false}if(n==="."&&cur.includes("."))return;
+ if(cur==="0"&&n!==".")cur=n;else if(cur.replace(/[-.]/g,"").length<14)cur+=n;show()}
+function setOp(o){if(err())return;if(op&&!fresh)cur=fmt(calc(prev,cur,op));prev=cur;op=o;fresh=true;show()}
+function eq(){if(!op||err())return;const e=prev+" "+op+" "+cur,r=fmt(calc(prev,cur,op));$("hist1").textContent=e+" =";cur=r;op=prev=null;fresh=true;$("disp").textContent=cur;show();$("hist1").textContent=e+" =";if(r!=="Error")addH(e,r)}
+function unary(f){if(err())return;let v=+cur,r;
+ if(f==="sqrt")r=v<0?"Error":Math.sqrt(v);else if(f==="sq")r=v*v;else if(f==="inv")r=v===0?"Error":1/v;else if(f==="pi")r=Math.PI;
+ cur=fmt(r);fresh=true;show()}
+function act(a){if(a==="clear"){cur="0";prev=op=null;fresh=false;show()}
+ else if(a==="back"){if(fresh||err())return;cur=cur.length>1&&!(cur.length===2&&cur[0]==="-")?cur.slice(0,-1):"0";show()}
+ else if(a==="percent"){if(!err()){cur=fmt(+cur/100);show()}}
+ else if(a==="neg"){if(!err()&&cur!=="0"){cur=cur[0]==="-"?cur.slice(1):"-"+cur;show()}}
+ else if(a==="eq")eq()}
+$("calc").addEventListener("click",e=>{const b=e.target.closest("button");if(!b||b.closest(".bar"))return;
+ if(b.dataset.n)num(b.dataset.n);else if(b.dataset.op)setOp(b.dataset.op);else if(b.dataset.f)unary(b.dataset.f);else if(b.dataset.a)act(b.dataset.a)});
+$("screen").onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(cur).then(()=>toast("Copied "+cur)).catch(()=>{})};
+$("hl").onclick=e=>{const li=e.target.closest("li[data-i]");if(li){cur=history[li.dataset.i].r;fresh=true;op=prev=null;show()}};
+$("clrH").onclick=()=>{history=[];renderH()};
+$("sciBtn").onclick=e=>{const on=$("calc").classList.toggle("sciOn");e.target.classList.toggle("on",on)};
+$("themeBtn").onclick=e=>{const l=document.documentElement.dataset.theme==="dark";document.documentElement.dataset.theme=l?"light":"dark";e.target.textContent=l?"Dark mode":"Light mode"};
+const map={"/":"÷","*":"×","-":"−","+":"+"};
+document.addEventListener("keydown",e=>{const k=e.key;let s;
+ if(/^[0-9.]$/.test(k)){num(k);s=`[data-n="${k}"]`}
+ else if(map[k]){setOp(map[k]);s=`[data-op="${map[k]}"]`}
+ else if(k==="Enter"||k==="="){e.preventDefault();eq();s='[data-a="eq"]'}
+ else if(k==="Backspace"){act("back");s='[data-a="back"]'}
+ else if(k==="Escape"||k==="Delete"){act("clear");s='[data-a="clear"]'}
+ else if(k==="%"){act("percent");s='[data-a="percent"]'}
+ if(s){const b=document.querySelector(s);b.classList.add("press");setTimeout(()=>b.classList.remove("press"),100)}});
+renderH();
+</script></body></html>
